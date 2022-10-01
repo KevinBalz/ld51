@@ -1,3 +1,4 @@
+#include "FrameData.hpp"
 #include "Tako.hpp"
 #include "Game.hpp"
 
@@ -8,14 +9,11 @@ void Setup(void* gameDataPtr, const tako::SetupData& setup)
 	gameData->Setup(setup);
 }
 
-struct FrameData
-{
-
-};
-
 void Update(const tako::GameStageData stageData, tako::Input* input, float dt)
 {
 	auto* gameData = reinterpret_cast<Game*>(stageData.gameData);
+	auto* frameData = reinterpret_cast<FrameData*>(stageData.frameData);
+	new (frameData) FrameData();
 	gameData->Update(stageData, input, dt);
 }
 

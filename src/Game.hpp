@@ -6,6 +6,8 @@
 #include <Jam/LDtkImporter.hpp>
 #include "Comps.hpp"
 #include "Entity.hpp"
+#include <Font.hpp>
+#include "FrameData.hpp"
 #include "Jam/TileMap.hpp"
 #include "Player.hpp"
 #include "Reflection.hpp"
@@ -53,6 +55,18 @@ tako::Entity SpawnTileEntity(tako::World& world, tako::Jam::TileEntity& entDef)
 	new (&comp) T();
 	ApplyLDtkFields(&comp, entDef.fields, tako::Reflection::Resolver::Get<T>());
 	return ent;
+}
+
+inline tako::Texture CreateText(tako::OpenGLPixelArtDrawer* drawer, tako::Font* font, std::string_view text)
+{
+	auto bitmap = font->RenderText(text, 1);
+    return drawer->CreateTexture(bitmap);
+}
+
+inline void UpdateText(tako::OpenGLPixelArtDrawer* drawer, tako::Font* font, std::string_view text, tako::Texture& tex)
+{
+	auto bitmap = font->RenderText(text, 1);
+    drawer->UpdateTexture(tex, bitmap);
 }
 
 
@@ -135,12 +149,41 @@ public:
 		m_worldClock = 10;
 	}
 
+	void UpdateClockText()
+	{
+		int num = std::ceil(m_worldClock);
+
+		char firstDigit;
+		if (num >= 10)
+		{
+			firstDigit = num / 10 + '0';
+		}
+		else
+		{
+			firstDigit = '0';
+		}
+		char secondDigit;
+		secondDigit = num % 10 + '0';
+		std::stringstream stream;
+		stream << firstDigit << secondDigit;
+		auto str = stream.str();
+		if (str != m_renderedClockText)
+		{
+			UpdateText(drawer, m_font, str, m_clockTex);
+			m_renderedClockText = str;
+		}
+	}
+
 	void Setup(const tako::SetupData& setup)
 	{
 		drawer = new tako::OpenGLPixelArtDrawer(setup.context);
 		context = setup.context;
 		drawer->SetTargetSize(240, 135);
 		drawer->AutoScale();
+
+		m_font = new tako::Font("/charmap-cellphone.png", 5, 7, 1, 1, 2, 2,
+			" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]\a_`abcdefghijklmnopqrstuvwxyz{|}~");
+		m_clockTex = CreateText(drawer, m_font, m_renderedClockText);
 
 		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
 		LoadLevel(0);
@@ -149,7 +192,8 @@ public:
 
 	void Update(const tako::GameStageData stageData, tako::Input* input, float dt)
 	{
-		PlayerUpdate(input, dt, m_world);
+		auto frameData = reinterpret_cast<FrameData*>(stageData.frameData);
+		PlayerUpdate(frameData, input, dt, m_world);
 
 		m_nodesCache.clear();
 		m_world.IterateComps<tako::Entity, Position, RigidBody>([&](tako::Entity entity, Position& pos, RigidBody& body)
@@ -165,9 +209,13 @@ public:
 		});
 
 		tako::Jam::PlatformerPhysics2D::CalculateMovement(dt, m_nodesCache);
-		tako::Jam::PlatformerPhysics2D::SimulatePhysics(m_nodesCache, {m_activeLevel->collision, {16, 16}, 16, 16 }, [](auto& self, auto& other) { LOG("col!");});
+		tako::Jam::PlatformerPhysics2D::SimulatePhysics(m_nodesCache, {m_activeLevel->collision, {16, 16}, (int) m_activeLevel->size.x / 16, (int) m_activeLevel->size.y / 16 }, [](auto& self, auto& other) { LOG("col!");});
 
 		m_worldClock -= dt;
+		if (frameData->triggeredCheckpoint)
+		{
+			ResetWorldClock();
+		}
 		if (m_worldClock <= 0)
 		{
 			ResetWorldClock();
@@ -187,6 +235,7 @@ public:
 		{
 			drawer->SetCameraPosition(pos.position);
 		});
+		UpdateClockText();
 	}
 
 
@@ -222,6 +271,11 @@ public:
 				DrawEntities();
 			}
 		}
+
+		//auto m_cameraSize = drawer->GetCameraViewSize();
+		//drawer->SetCameraPosition(m_cameraSize/2);
+		drawer->SetCameraPosition({0 , 0});
+		drawer->DrawImage((float) -m_clockTex.width / 2, 42, m_clockTex.width, m_clockTex.height, m_clockTex.handle);
 	}
 
 private:
@@ -234,4 +288,8 @@ private:
 	std::vector<tako::Texture> m_layerCache;
 	std::vector<tako::Jam::PlatformerPhysics2D::Node> m_nodesCache;
 	std::map<std::string, std::function<tako::Entity(tako::World&, tako::Jam::TileEntity&)>> m_entityInstantiate;
+
+	tako::Font* m_font;
+	std::string m_renderedClockText = "10";
+	tako::Texture m_clockTex;
 };

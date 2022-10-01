@@ -13,6 +13,7 @@ add_executable(${EXECUTABLE}
 	"src/Comps.hpp"
 	"src/Comps.cpp"
 	"src/Player.hpp"
+	"src/FrameData.hpp"
 )
 
 tako_setup(${EXECUTABLE})
