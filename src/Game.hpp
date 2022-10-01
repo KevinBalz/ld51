@@ -2,14 +2,36 @@
 #include <Tako.hpp>
 #include <OpenGLPixelArtDrawer.hpp>
 #include <World.hpp>
-#include "PlatformerPhysics2D.hpp"
+#include <PlatformerPhysics2D.hpp>
+#include <Jam/LDtkImporter.hpp>
 #include "Comps.hpp"
+#include "Jam/TileMap.hpp"
 
 class Game
 {
 public:
 	Game()
 	{}
+
+
+	void LoadLevel(int id)
+	{
+		auto& level = m_tileWorld.levels[id];
+		m_activeLevel = &level;
+		for (int i = 0; i < level.tileLayers.size(); i++)
+		{
+			auto& layer = level.tileLayers[i];
+			if (i >= m_layerCache.size())
+			{
+				auto tex = drawer->CreateTexture(layer.composite);
+				m_layerCache.push_back(tex);
+			}
+			else
+			{
+				drawer->UpdateTexture(m_layerCache[i], layer.composite);
+			}
+		}
+	}
 
 	void Setup(const tako::SetupData& setup)
 	{
@@ -18,11 +40,14 @@ public:
 		drawer->SetTargetSize(240, 135);
 		drawer->AutoScale();
 
+		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
+		LoadLevel(0);
+
 		m_world.Create
 		(
 			Player(),
-			Position{{0, 0}},
-			RigidBody{{0, 0}, {0, 0, 16, 16}},
+			Position{m_activeLevel->entities[0].position},
+			RigidBody{{0, 0}, {0, 0, 12, 16}},
 			RectRenderer{{16, 16}, {255, 0, 0, 255}}
 		);
 	}
@@ -44,6 +69,8 @@ public:
 				moveX += speed;
 			}
 			body.velocity.x = moveX = acceleration * moveX + (1 - acceleration) * body.velocity.x;
+			body.velocity.y -= dt * 200;
+			drawer->SetCameraPosition(pos.position);
 		});
 
 
@@ -60,23 +87,50 @@ public:
 			});
 		});
 		tako::Jam::PlatformerPhysics2D::CalculateMovement(dt, m_nodesCache);
-		tako::Jam::PlatformerPhysics2D::SimulatePhysics(m_nodesCache, [](auto& self, auto& other) { LOG("col!");});
+		tako::Jam::PlatformerPhysics2D::SimulatePhysics(m_nodesCache, {m_activeLevel->collision, {16, 16}, 16, 16 }, [](auto& self, auto& other) { LOG("col!");});
 	}
 
-	void Draw(const tako::GameStageData stageData)
-	{
-		drawer->Resize(context->GetWidth(), context->GetHeight());
-		drawer->Clear();
 
+	void DrawEntities()
+	{
 		m_world.IterateComps<Position, RectRenderer>([&](Position& pos, RectRenderer& ren)
 		{
 			drawer->DrawRectangle(pos.position.x - ren.size.x / 2, pos.position.y + ren.size.y / 2, ren.size.x, ren.size.y, ren.color);
 		});
 	}
 
+	void DrawTileLayer(int i)
+	{
+		auto& tex = m_layerCache[i];
+		drawer->DrawImage(0, tex.height, tex.width, tex.height, tex.handle);
+	}
+
+	void Draw(const tako::GameStageData stageData)
+	{
+		drawer->Resize(context->GetWidth(), context->GetHeight());
+		drawer->SetClearColor(m_activeLevel->backgroundColor);
+		drawer->Clear();
+
+		if (m_activeLevel->entityLayerIndex < 0)
+		{
+			DrawEntities();
+		}
+		for (int i = 0; i < m_activeLevel->tileLayers.size(); i++)
+		{
+			DrawTileLayer(i);
+			if (m_activeLevel->entityLayerIndex == i)
+			{
+				DrawEntities();
+			}
+		}
+	}
+
 private:
 	tako::OpenGLPixelArtDrawer* drawer;
 	tako::GraphicsContext* context;
 	tako::World m_world;
+	tako::Jam::TileWorld m_tileWorld;
+	tako::Jam::TileMap* m_activeLevel;
+	std::vector<tako::Texture> m_layerCache;
 	std::vector<tako::Jam::PlatformerPhysics2D::Node> m_nodesCache;
 };
