@@ -35,6 +35,8 @@ struct Player
 
 struct Camera
 {
+	bool snapped = false;
+	tako::Vector2 position;
 };
 
 struct PlayerSpawn

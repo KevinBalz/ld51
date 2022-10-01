@@ -12,6 +12,9 @@
 #include "Player.hpp"
 #include "Reflection.hpp"
 #include <variant>
+#ifdef TAKO_IMGUI
+#include "imgui.h"
+#endif
 
 
 template <typename T>
@@ -26,7 +29,7 @@ void AssignLDtkField(const char* typeName, void* data, nlohmann::json& json, con
 	}
 }
 
-void ApplyLDtkFields(void* data, nlohmann::json& json, const tako::Reflection::StructInformation* structType)
+inline void ApplyLDtkFields(void* data, nlohmann::json& json, const tako::Reflection::StructInformation* structType)
 {
 	for (auto& info : structType->fields)
 	{
@@ -68,6 +71,18 @@ inline void UpdateText(tako::OpenGLPixelArtDrawer* drawer, tako::Font* font, std
 {
 	auto bitmap = font->RenderText(text, 1);
     drawer->UpdateTexture(tex, bitmap);
+}
+
+using Rect = tako::Jam::PlatformerPhysics2D::Rect;
+
+inline tako::Vector2 FitMapBound(Rect bounds, tako::Vector2 cameraPos, tako::Vector2 camSize)
+{
+    cameraPos.x = std::max(bounds.Left() + camSize.x / 2, cameraPos.x);
+    cameraPos.x = std::min(bounds.Right() - camSize.x / 2, cameraPos.x);
+    cameraPos.y = std::min(bounds.Top() - camSize.y / 2, cameraPos.y);
+    cameraPos.y = std::max(bounds.Bottom() + camSize.y / 2, cameraPos.y);
+
+    return cameraPos;
 }
 
 
@@ -115,9 +130,7 @@ public:
 			});
 		}
 
-						LOG("2got here")
 		m_world.Reset();
-						LOG("3got here")
 		auto& level = m_tileWorld.levels[id];
 		m_activeLevel = &level;
 		m_activeLevelID = id;
@@ -135,14 +148,10 @@ public:
 			}
 		}
 
-						LOG("4got here")
-
 		for (auto& entDef : level.entities)
 		{
 			m_entityInstantiate[entDef.typeName](m_world, entDef);
 		}
-
-						LOG("5got here")
 
 		tako::Vector2 spawnPos;
 		if (std::holds_alternative<tako::Vector2>(coords))
@@ -153,14 +162,13 @@ public:
 		{
 			m_world.IterateComps<Position, PlayerSpawn>([&](Position& pos, PlayerSpawn& spawn)
 			{
-				if (spawn.id == 0)
+				if (spawn.id == newSpawnID)
 				{
 					spawnPos = pos.position;
 				}
 			});
 		}
 
-						LOG("6got here")
 		m_world.Create
 		(
 			Player{newSpawnID, newSpawnMap},
@@ -169,8 +177,6 @@ public:
 			RectRenderer{{16, 16}, {255, 0, 0, 255}},
 			Camera()
 		);
-
-						LOG("7got here")
 	}
 
 	void ResetWorldClock()
@@ -299,9 +305,33 @@ public:
 
 		m_world.IterateComps<Position, Camera>([&](Position& pos, Camera& cam)
 		{
-			drawer->SetCameraPosition(pos.position);
+			auto camSize = drawer->GetCameraViewSize();
+			Rect bounds(m_activeLevel->size.x/2, m_activeLevel->size.y/2, m_activeLevel->size.x, m_activeLevel->size.y);
+			auto target = FitMapBound(bounds, pos.position, camSize);
+			if (cam.snapped)
+			{
+				cam.position += (target - cam.position) * dt * 6;
+				cam.position = FitMapBound(bounds, cam.position, camSize);
+			}
+			else
+			{
+				cam.position = target;
+				cam.snapped = true;
+			}
+			drawer->SetCameraPosition(cam.position);
 		});
 		UpdateClockText();
+
+#ifdef TAKO_IMGUI
+		m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
+		{
+			ImGui::Begin("Debug");
+			ImGui::InputInt("Spawn Map", &player.spawnMap);
+			ImGui::InputInt("Spawner ID", &player.spawnID);
+			ImGui::End();
+		});
+
+#endif
 	}
 
 
