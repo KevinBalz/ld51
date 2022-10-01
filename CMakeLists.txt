@@ -10,6 +10,7 @@ SET(EXECUTABLE BaseClock)
 add_executable(${EXECUTABLE}
   "src/Main.cpp"
   "src/Game.hpp"
+  "src/Comps.hpp"
 )
 
 tako_setup(${EXECUTABLE})
