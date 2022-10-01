@@ -29,6 +29,7 @@ struct RigidBody
 struct Player
 {
 	int spawnID = 0;
+	int spawnMap = 0;
 	float airTime = 0;
 };
 

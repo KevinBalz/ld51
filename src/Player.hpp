@@ -3,9 +3,10 @@
 #include <World.hpp>
 #include "Comps.hpp"
 #include "FrameData.hpp"
+#include "Jam/TileMap.hpp"
 
 
-inline void PlayerUpdate(FrameData* frameData, tako::Input* input, float dt, tako::World& world)
+inline void PlayerUpdate(FrameData* frameData, tako::Input* input, float dt, tako::World& world, int tileMap)
 {
 	world.IterateComps<Player, Position, RigidBody>([&](Player& player, Position& pos, RigidBody& body)
 	{
@@ -43,6 +44,7 @@ inline void PlayerUpdate(FrameData* frameData, tako::Input* input, float dt, tak
 				if (tako::Jam::PlatformerPhysics2D::Rect::Overlap(playerRec, sRec))
 				{
 					player.spawnID = spawn.id;
+					player.spawnMap = tileMap;
 					frameData->triggeredCheckpoint = true;
 				}
 			});

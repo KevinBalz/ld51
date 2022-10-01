@@ -11,6 +11,7 @@
 #include "Jam/TileMap.hpp"
 #include "Player.hpp"
 #include "Reflection.hpp"
+#include <variant>
 
 
 template <typename T>
@@ -94,17 +95,32 @@ public:
 
 	Game()
 	{
-		RegisterTileEntity<PlayerSpawn>([](auto& world, auto ent, auto& entDef)
-		{
-			LOG("It worked!");
-		});
+		RegisterTileEntity<PlayerSpawn>();
 	}
 
-	void LoadLevel(int id)
+	void LoadLevel(int id, std::variant<int, tako::Vector2> coords)
 	{
+		int newSpawnMap = id;
+		int newSpawnID = 0;
+		if (std::holds_alternative<int>(coords))
+		{
+			newSpawnID = std::get<int>(coords);
+		}
+		else
+		{
+			m_world.IterateComps<Player>([&](Player& player)
+			{
+				newSpawnMap = player.spawnMap;
+				newSpawnID = player.spawnID;
+			});
+		}
+
+						LOG("2got here")
 		m_world.Reset();
+						LOG("3got here")
 		auto& level = m_tileWorld.levels[id];
 		m_activeLevel = &level;
+		m_activeLevelID = id;
 		for (int i = 0; i < level.tileLayers.size(); i++)
 		{
 			auto& layer = level.tileLayers[i];
@@ -119,29 +135,42 @@ public:
 			}
 		}
 
+						LOG("4got here")
+
 		for (auto& entDef : level.entities)
 		{
 			m_entityInstantiate[entDef.typeName](m_world, entDef);
 		}
 
-		tako::Vector2 spawnPos;
-		m_world.IterateComps<Position, PlayerSpawn>([&](Position& pos, PlayerSpawn& spawn)
-		{
-			if (spawn.id == 0)
-			{
-				spawnPos = pos.position;
-			}
-		});
+						LOG("5got here")
 
+		tako::Vector2 spawnPos;
+		if (std::holds_alternative<tako::Vector2>(coords))
+		{
+			spawnPos = std::get<tako::Vector2>(coords);
+		}
+		else
+		{
+			m_world.IterateComps<Position, PlayerSpawn>([&](Position& pos, PlayerSpawn& spawn)
+			{
+				if (spawn.id == 0)
+				{
+					spawnPos = pos.position;
+				}
+			});
+		}
+
+						LOG("6got here")
 		m_world.Create
 		(
-			Player(),
+			Player{newSpawnID, newSpawnMap},
 			Position{spawnPos},
 			RigidBody{{0, 0}, {0, 0, 12, 16}},
 			RectRenderer{{16, 16}, {255, 0, 0, 255}},
 			Camera()
 		);
-		ResetWorldClock();
+
+						LOG("7got here")
 	}
 
 	void ResetWorldClock()
@@ -186,14 +215,38 @@ public:
 		m_clockTex = CreateText(drawer, m_font, m_renderedClockText);
 
 		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
-		LoadLevel(0);
+		LoadLevel(0, 0);
+		ResetWorldClock();
 	}
 
 
 	void Update(const tako::GameStageData stageData, tako::Input* input, float dt)
 	{
 		auto frameData = reinterpret_cast<FrameData*>(stageData.frameData);
-		PlayerUpdate(frameData, input, dt, m_world);
+		std::optional<int> newNeighbourID;
+		std::optional<tako::Vector2> newPos;
+		m_world.IterateComps<Player, Position>([&](Player& player, Position& pos)
+		{
+			if (pos.position.x < 0 || pos.position.x > m_activeLevel->size.x || pos.position.y < 0 || pos.position.y > m_activeLevel->size.y)
+			{
+				tako::Vector2 worldPos(pos.position.x + m_activeLevel->worldX, m_activeLevel->worldY + m_activeLevel->size.y - pos.position.y);
+				for (auto neighbourID : m_activeLevel->neighbours)
+				{
+					auto& neighbour = m_tileWorld.levels[neighbourID];
+					if (worldPos.x >= neighbour.worldX && worldPos.x <= neighbour.worldX + neighbour.size.x && worldPos.y >= neighbour.worldY && worldPos.y <= neighbour.worldY + neighbour.size.y )
+					{
+						newPos = tako::Vector2(worldPos.x - neighbour.worldX, neighbour.worldY + neighbour.size.y - worldPos.y);
+						newNeighbourID = neighbourID;
+						break;
+					}
+				}
+			}
+		});
+		if (newPos)
+		{
+			LoadLevel(newNeighbourID.value(), newPos.value());
+		}
+		PlayerUpdate(frameData, input, dt, m_world, m_activeLevelID);
 
 		m_nodesCache.clear();
 		m_world.IterateComps<tako::Entity, Position, RigidBody>([&](tako::Entity entity, Position& pos, RigidBody& body)
@@ -219,16 +272,29 @@ public:
 		if (m_worldClock <= 0)
 		{
 			ResetWorldClock();
-			m_world.IterateComps<Position, PlayerSpawn>([&](Position& pos, PlayerSpawn& spawn)
+			std::optional<Player> playerWarp;
+			m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
 			{
-				m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
+				if (m_activeLevelID != player.spawnMap)
 				{
-					if (player.spawnID == spawn.id)
+					playerWarp = player;
+				}
+				else
+				{
+					m_world.IterateComps<Position, PlayerSpawn>([&](Position& pos, PlayerSpawn& spawn)
 					{
-						pPos.position = pos.position;
-					}
-				});
+						if (player.spawnID == spawn.id)
+						{
+							pPos.position = pos.position;
+						}
+					});
+				}
 			});
+			if (playerWarp)
+			{
+				auto player = playerWarp.value();
+				LoadLevel(player.spawnMap, player.spawnID);
+			}
 		}
 
 		m_world.IterateComps<Position, Camera>([&](Position& pos, Camera& cam)
@@ -284,6 +350,7 @@ private:
 	tako::World m_world;
 	tako::Jam::TileWorld m_tileWorld;
 	tako::Jam::TileMap* m_activeLevel;
+	int m_activeLevelID;
 	float m_worldClock;
 	std::vector<tako::Texture> m_layerCache;
 	std::vector<tako::Jam::PlatformerPhysics2D::Node> m_nodesCache;
