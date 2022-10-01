@@ -5,17 +5,90 @@
 #include <PlatformerPhysics2D.hpp>
 #include <Jam/LDtkImporter.hpp>
 #include "Comps.hpp"
+#include "Entity.hpp"
 #include "Jam/TileMap.hpp"
+#include "Player.hpp"
+#include "Reflection.hpp"
+
+
+template <typename T>
+void AssignLDtkField(const char* typeName, void* data, nlohmann::json& json, const tako::Reflection::StructInformation::Field& info)
+{
+	for (auto& field : json)
+	{
+		if (field["__type"] == typeName)
+		{
+			*reinterpret_cast<T*>(reinterpret_cast<tako::U8*>(data) + info.offset) = field["__value"];
+		}
+	}
+}
+
+void ApplyLDtkFields(void* data, nlohmann::json& json, const tako::Reflection::StructInformation* structType)
+{
+	for (auto& info : structType->fields)
+	{
+		if (tako::Reflection::GetPrimitiveInformation<int>() == info.type)
+		{
+			AssignLDtkField<int>("Int", data, json, info);
+		}
+		else if (tako::Reflection::GetPrimitiveInformation<bool>() == info.type)
+		{
+			AssignLDtkField<bool>("Bool", data, json, info);
+		}
+	}
+}
+
+
+template<typename T>
+tako::Entity SpawnTileEntity(tako::World& world, tako::Jam::TileEntity& entDef)
+{
+	auto ent = world.Create
+	(
+		Position{{entDef.position}}
+	);
+
+
+	world.AddComponent<T>(ent);
+	auto& comp = world.GetComponent<T>(ent);
+	new (&comp) T();
+	ApplyLDtkFields(&comp, entDef.fields, tako::Reflection::Resolver::Get<T>());
+	return ent;
+}
+
 
 class Game
 {
 public:
-	Game()
-	{}
+	template<typename T>
+	void RegisterTileEntity()
+	{
+		auto info = tako::Reflection::Resolver::Get<T>();
+		m_entityInstantiate[info->name] = &SpawnTileEntity<T>;
+	}
 
+	template<typename T, typename Cb>
+	void RegisterTileEntity(Cb&& callback)
+	{
+		auto info = tako::Reflection::Resolver::Get<T>();
+		m_entityInstantiate[info->name] = [=](tako::World& world, tako::Jam::TileEntity& entDef)
+		{
+			auto ent = SpawnTileEntity<T>(world, entDef);
+			callback(world, ent, entDef);
+			return ent;
+		};
+	}
+
+	Game()
+	{
+		RegisterTileEntity<PlayerSpawn>([](auto& world, auto ent, auto& entDef)
+		{
+			LOG("It worked!");
+		});
+	}
 
 	void LoadLevel(int id)
 	{
+		m_world.Reset();
 		auto& level = m_tileWorld.levels[id];
 		m_activeLevel = &level;
 		for (int i = 0; i < level.tileLayers.size(); i++)
@@ -31,6 +104,35 @@ public:
 				drawer->UpdateTexture(m_layerCache[i], layer.composite);
 			}
 		}
+
+		for (auto& entDef : level.entities)
+		{
+			m_entityInstantiate[entDef.typeName](m_world, entDef);
+		}
+
+		tako::Vector2 spawnPos;
+		m_world.IterateComps<Position, PlayerSpawn>([&](Position& pos, PlayerSpawn& spawn)
+		{
+			if (spawn.id == 0)
+			{
+				spawnPos = pos.position;
+			}
+		});
+
+		m_world.Create
+		(
+			Player(),
+			Position{spawnPos},
+			RigidBody{{0, 0}, {0, 0, 12, 16}},
+			RectRenderer{{16, 16}, {255, 0, 0, 255}},
+			Camera()
+		);
+		ResetWorldClock();
+	}
+
+	void ResetWorldClock()
+	{
+		m_worldClock = 10;
 	}
 
 	void Setup(const tako::SetupData& setup)
@@ -42,37 +144,12 @@ public:
 
 		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
 		LoadLevel(0);
-
-		m_world.Create
-		(
-			Player(),
-			Position{m_activeLevel->entities[0].position},
-			RigidBody{{0, 0}, {0, 0, 12, 16}},
-			RectRenderer{{16, 16}, {255, 0, 0, 255}}
-		);
 	}
 
 
 	void Update(const tako::GameStageData stageData, tako::Input* input, float dt)
 	{
-		m_world.IterateComps<Player, Position, RigidBody>([&](Player& player, Position& pos, RigidBody& body)
-		{
-			constexpr float speed = 20;
-			constexpr auto acceleration = 0.2f;
-			float moveX = 0;
-			if (input->GetKey(tako::Key::Left) || input->GetKey(tako::Key::A) || input->GetKey(tako::Key::Gamepad_Dpad_Left))
-			{
-				moveX -= speed;
-			}
-			if (input->GetKey(tako::Key::Right) || input->GetKey(tako::Key::D) || input->GetKey(tako::Key::Gamepad_Dpad_Right))
-			{
-				moveX += speed;
-			}
-			body.velocity.x = moveX = acceleration * moveX + (1 - acceleration) * body.velocity.x;
-			body.velocity.y -= dt * 200;
-			drawer->SetCameraPosition(pos.position);
-		});
-
+		PlayerUpdate(input, dt, m_world);
 
 		m_nodesCache.clear();
 		m_world.IterateComps<tako::Entity, Position, RigidBody>([&](tako::Entity entity, Position& pos, RigidBody& body)
@@ -86,8 +163,30 @@ public:
 				{0, 0}
 			});
 		});
+
 		tako::Jam::PlatformerPhysics2D::CalculateMovement(dt, m_nodesCache);
 		tako::Jam::PlatformerPhysics2D::SimulatePhysics(m_nodesCache, {m_activeLevel->collision, {16, 16}, 16, 16 }, [](auto& self, auto& other) { LOG("col!");});
+
+		m_worldClock -= dt;
+		if (m_worldClock <= 0)
+		{
+			ResetWorldClock();
+			m_world.IterateComps<Position, PlayerSpawn>([&](Position& pos, PlayerSpawn& spawn)
+			{
+				m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
+				{
+					if (player.spawnID == spawn.id)
+					{
+						pPos.position = pos.position;
+					}
+				});
+			});
+		}
+
+		m_world.IterateComps<Position, Camera>([&](Position& pos, Camera& cam)
+		{
+			drawer->SetCameraPosition(pos.position);
+		});
 	}
 
 
@@ -131,6 +230,8 @@ private:
 	tako::World m_world;
 	tako::Jam::TileWorld m_tileWorld;
 	tako::Jam::TileMap* m_activeLevel;
+	float m_worldClock;
 	std::vector<tako::Texture> m_layerCache;
 	std::vector<tako::Jam::PlatformerPhysics2D::Node> m_nodesCache;
+	std::map<std::string, std::function<tako::Entity(tako::World&, tako::Jam::TileEntity&)>> m_entityInstantiate;
 };

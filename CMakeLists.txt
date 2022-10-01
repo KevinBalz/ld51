@@ -8,9 +8,11 @@ add_subdirectory("dependencies/tako")
 include(tako)
 SET(EXECUTABLE BaseClock)
 add_executable(${EXECUTABLE}
-  "src/Main.cpp"
-  "src/Game.hpp"
-  "src/Comps.hpp"
+	"src/Main.cpp"
+	"src/Game.hpp"
+	"src/Comps.hpp"
+	"src/Comps.cpp"
+	"src/Player.hpp"
 )
 
 tako_setup(${EXECUTABLE})
