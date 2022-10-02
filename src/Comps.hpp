@@ -3,6 +3,7 @@
 #include <Math.hpp>
 #include <World.hpp>
 #include "PlatformerPhysics2D.hpp"
+#include "Texture.hpp"
 
 struct Position
 {
@@ -13,6 +14,11 @@ struct RectRenderer
 {
 	tako::Vector2 size;
 	tako::Color color;
+};
+
+struct SpriteRenderer
+{
+	tako::Texture sprite;
 };
 
 struct RigidBody
@@ -33,6 +39,9 @@ struct Player
 	float airTime = 0;
 	float prevYVelocity = 0;
 	bool grounded = false;
+	float dashCooldown = 0.0f;
+	float usedDashes = 0;
+	std::array<bool, 4> unlocked;
 };
 
 struct Camera
@@ -44,5 +53,11 @@ struct Camera
 struct PlayerSpawn
 {
 	int id;
+	REFLECT()
+};
+
+struct Upgrade
+{
+	int upgradeID;
 	REFLECT()
 };

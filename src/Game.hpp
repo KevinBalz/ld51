@@ -112,6 +112,13 @@ public:
 	Game()
 	{
 		RegisterTileEntity<PlayerSpawn>();
+		RegisterTileEntity<Upgrade>([&](tako::World& world, auto ent, auto& entDef)
+		{
+			world.AddComponent<SpriteRenderer>(ent);
+			auto& up = world.GetComponent<Upgrade>(ent);
+			auto& ren = world.GetComponent<SpriteRenderer>(ent);
+			ren.sprite = m_upgradeSprites[up.upgradeID];
+		});
 	}
 
 	void LoadLevel(int id, std::variant<int, tako::Vector2> coords)
@@ -219,6 +226,7 @@ public:
 		m_font = new tako::Font("/charmap-cellphone.png", 5, 7, 1, 1, 2, 2,
 			" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]\a_`abcdefghijklmnopqrstuvwxyz{|}~");
 		m_clockTex = CreateText(drawer, m_font, m_renderedClockText);
+		m_upgradeSprites[0] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
 
 		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
 		LoadLevel(0, 0);
@@ -338,12 +346,15 @@ public:
 #endif
 	}
 
-
 	void DrawEntities()
 	{
 		m_world.IterateComps<Position, RectRenderer>([&](Position& pos, RectRenderer& ren)
 		{
 			drawer->DrawRectangle(pos.position.x - ren.size.x / 2, pos.position.y + ren.size.y / 2, ren.size.x, ren.size.y, ren.color);
+		});
+		m_world.IterateComps<Position, SpriteRenderer>([&](Position& pos, SpriteRenderer& ren)
+		{
+			drawer->DrawImage(pos.position.x - (float) ren.sprite.width / 2, pos.position.y + (float) ren.sprite.height / 2, ren.sprite.width, ren.sprite.height, ren.sprite.handle);
 		});
 	}
 
@@ -393,4 +404,5 @@ private:
 	tako::Font* m_font;
 	std::string m_renderedClockText = "10";
 	tako::Texture m_clockTex;
+	std::array<tako::Texture, 4> m_upgradeSprites;
 };
