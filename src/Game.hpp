@@ -12,6 +12,7 @@
 #include "Jam/TileMap.hpp"
 #include "Player.hpp"
 #include "Reflection.hpp"
+#include "SmallVec.hpp"
 #include <variant>
 #include <sstream>
 #ifdef TAKO_IMGUI
@@ -119,6 +120,12 @@ public:
 			auto& up = world.GetComponent<Upgrade>(ent);
 			auto& ren = world.GetComponent<SpriteRenderer>(ent);
 			ren.sprite = m_upgradeSprites[up.upgradeID];
+		});
+		RegisterTileEntity<Collectible>([&](tako::World& world, auto ent, auto& entDef)
+		{
+			world.AddComponent<SpriteRenderer>(ent);
+			auto& ren = world.GetComponent<SpriteRenderer>(ent);
+			ren.sprite = m_upgradeSprites[0];
 		});
 	}
 
@@ -270,6 +277,28 @@ public:
 		}
 	}
 
+	void UpdateBoxText(FrameData* frameData, float dt)
+	{
+		frameData->showDialog = false;
+		frameData->tutorialDialogOpen = false;
+		if (sharedData.targetText.size() <= 0) return;
+		sharedData.textPassed += dt;
+		bool fadeOut = sharedData.textDisplayed == sharedData.targetText.size();
+		if (fadeOut && sharedData.textPassed >= (sharedData.textTutorial ? 5 : 1))
+		{
+			sharedData.targetText = "";
+			return;
+		}
+		frameData->showDialog = sharedData.textDisplayed > 0;
+		frameData->tutorialDialogOpen = sharedData.textTutorial && frameData->showDialog;
+		if (fadeOut || sharedData.textPassed < 0.1f) return;
+		sharedData.textDisplayed++;
+		sharedData.textPassed = 0;
+		auto str = sharedData.targetText.substr(0, sharedData.textDisplayed);
+		LOG("{}", str);
+		UpdateText(drawer, m_font, str, m_dialogTex);
+	}
+
 	void Setup(const tako::SetupData& setup)
 	{
 		drawer = new tako::OpenGLPixelArtDrawer(setup.context);
@@ -280,6 +309,7 @@ public:
 		m_font = new tako::Font("/charmap-cellphone.png", 5, 7, 1, 1, 2, 2,
 			" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]\a_`abcdefghijklmnopqrstuvwxyz{|}~");
 		m_clockTex = CreateText(drawer, m_font, m_renderedClockText);
+		m_dialogTex = CreateText(drawer, m_font, " ");
 		m_upgradeSprites[0] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
 		m_upgradeSprites[1] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
 		m_upgradeSprites[2] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
@@ -293,6 +323,25 @@ public:
 	void Update(const tako::GameStageData stageData, tako::Input* input, float dt)
 	{
 		auto frameData = reinterpret_cast<FrameData*>(stageData.frameData);
+#ifdef TAKO_IMGUI
+		m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
+		{
+			ImGui::Begin("Debug");
+			ImGui::InputInt("Spawn Map", &player.spawnMap);
+			ImGui::InputInt("Spawner ID", &player.spawnID);
+			ImGui::InputInt("ClockMode", reinterpret_cast<int*>(&player.clockMode));
+
+			ImGui::Checkbox("Dash", &player.unlocked[0]);
+			ImGui::Text("Collected: %d", frameData->collectedCount);
+			ImGui::End();
+		});
+
+#endif
+		UpdateBoxText(frameData, dt);
+		if (frameData->tutorialDialogOpen)
+		{
+			return;
+		}
 		std::optional<int> newNeighbourID;
 #ifndef NDEBUG
 		if (input->GetKeyDown(tako::Key::Enter))
@@ -336,7 +385,7 @@ public:
 				LoadLevel(newNeighbourID.value(), newPos.value());
 			}
 		}
-		PlayerUpdate(frameData, input, dt, m_world, m_activeLevelID);
+		PlayerUpdate(&sharedData, frameData, input, dt, m_world, m_activeLevelID);
 
 		m_nodesCache.clear();
 		m_world.IterateComps<tako::Entity, Position, RigidBody>([&](tako::Entity entity, Position& pos, RigidBody& body)
@@ -405,20 +454,6 @@ public:
 			drawer->SetCameraPosition(cam.position);
 		});
 		UpdateClockText();
-
-#ifdef TAKO_IMGUI
-		m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
-		{
-			ImGui::Begin("Debug");
-			ImGui::InputInt("Spawn Map", &player.spawnMap);
-			ImGui::InputInt("Spawner ID", &player.spawnID);
-			ImGui::InputInt("ClockMode", reinterpret_cast<int*>(&player.clockMode));
-
-			ImGui::Checkbox("Dash", &player.unlocked[0]);
-			ImGui::End();
-		});
-
-#endif
 	}
 
 	void DrawEntities()
@@ -441,6 +476,11 @@ public:
 
 	void Draw(const tako::GameStageData stageData)
 	{
+		auto frameData = reinterpret_cast<FrameData*>(stageData.frameData);
+		m_world.IterateComps<Camera>([&](Camera& cam)
+		{
+			drawer->SetCameraPosition(cam.position);
+		});
 		drawer->Resize(context->GetWidth(), context->GetHeight());
 		drawer->SetClearColor(m_activeLevel->backgroundColor);
 		drawer->Clear();
@@ -458,10 +498,18 @@ public:
 			}
 		}
 
-		//auto m_cameraSize = drawer->GetCameraViewSize();
-		//drawer->SetCameraPosition(m_cameraSize/2);
 		drawer->SetCameraPosition({0 , 0});
 		drawer->DrawImage((float) -m_clockTex.width / 2, 42, m_clockTex.width, m_clockTex.height, m_clockTex.handle);
+		if (frameData->showDialog)
+		{
+			float x = (float) -m_dialogTex.width / 2;
+			float y = 0;
+			float width = m_dialogTex.width;
+			float height = m_dialogTex.height;
+			constexpr const float padding = 4;
+			drawer->DrawRectangle(x - padding / 2, y + padding / 2, width + padding, height + padding, {0, 0, 0, 255});
+			drawer->DrawImage(x, y, width, height, m_dialogTex.handle);
+		}
 	}
 
 private:
@@ -479,6 +527,8 @@ private:
 	tako::Font* m_font;
 	std::string m_renderedClockText = "10";
 	tako::Texture m_clockTex;
+	tako::Texture m_dialogTex;
 	std::array<tako::Texture, 4> m_upgradeSprites;
 	std::optional<Player> m_playerWarp;
+	SharedData sharedData;
 };

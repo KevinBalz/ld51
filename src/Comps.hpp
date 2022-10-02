@@ -49,7 +49,8 @@ struct Player
 	float dashCooldown = 0.0f;
 	float usedDashes = 0;
 	ClockMode clockMode = ClockMode::Decimal;
-	std::array<bool, 4> unlocked{false};
+	std::array<bool, 3> unlocked{false};
+	std::array<bool, 7> collected{false};
 };
 
 struct Camera
@@ -69,3 +70,11 @@ struct Upgrade
 	int upgradeID;
 	REFLECT()
 };
+
+struct Collectible
+{
+	int id;
+	REFLECT()
+};
+
+
