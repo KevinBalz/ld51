@@ -12,6 +12,7 @@
 #include "Player.hpp"
 #include "Reflection.hpp"
 #include <variant>
+#include <sstream>
 #ifdef TAKO_IMGUI
 #include "imgui.h"
 #endif
@@ -115,19 +116,18 @@ public:
 
 	void LoadLevel(int id, std::variant<int, tako::Vector2> coords)
 	{
-		int newSpawnMap = id;
-		int newSpawnID = 0;
+		Player player;
+		RigidBody body{{0, 0}, {0, 0, 12, 16}};
+		m_world.IterateComps<Player, RigidBody>([&](Player& pl, RigidBody& rb)
+		{
+			player = pl;
+			body = rb;
+		});
+
 		if (std::holds_alternative<int>(coords))
 		{
-			newSpawnID = std::get<int>(coords);
-		}
-		else
-		{
-			m_world.IterateComps<Player>([&](Player& player)
-			{
-				newSpawnMap = player.spawnMap;
-				newSpawnID = player.spawnID;
-			});
+			player.spawnMap = id;
+			player.spawnID = std::get<int>(coords);
 		}
 
 		m_world.Reset();
@@ -162,7 +162,7 @@ public:
 		{
 			m_world.IterateComps<Position, PlayerSpawn>([&](Position& pos, PlayerSpawn& spawn)
 			{
-				if (spawn.id == newSpawnID)
+				if (spawn.id == player.spawnID)
 				{
 					spawnPos = pos.position;
 				}
@@ -171,9 +171,9 @@ public:
 
 		m_world.Create
 		(
-			Player{newSpawnID, newSpawnMap},
+			std::move(player),
 			Position{spawnPos},
-			RigidBody{{0, 0}, {0, 0, 12, 16}},
+			std::move(body),
 			RectRenderer{{16, 16}, {255, 0, 0, 255}},
 			Camera()
 		);
@@ -269,7 +269,11 @@ public:
 
 		tako::Jam::PlatformerPhysics2D::CalculateMovement(dt, m_nodesCache);
 		tako::Jam::PlatformerPhysics2D::SimulatePhysics(m_nodesCache, {m_activeLevel->collision, {16, 16}, (int) m_activeLevel->size.x / 16, (int) m_activeLevel->size.y / 16 }, [](auto& self, auto& other) { LOG("col!");});
-
+		m_world.IterateComps<Player, RigidBody>([&](Player& player, RigidBody& rb)
+		{
+			player.grounded = rb.velocity.y == 0 && (player.grounded || player.prevYVelocity < 0);
+			player.prevYVelocity = rb.velocity.y;
+		});
 		m_worldClock -= dt;
 		if (frameData->triggeredCheckpoint)
 		{

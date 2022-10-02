@@ -12,18 +12,20 @@ inline void PlayerUpdate(FrameData* frameData, tako::Input* input, float dt, tak
 	{
 		constexpr float speed = 50;
 		constexpr auto acceleration = 0.2f;
-		float moveX = 0;
+		float moveX = input->GetAxis(tako::Axis::Left).x;
 		if (input->GetKey(tako::Key::Left) || input->GetKey(tako::Key::A) || input->GetKey(tako::Key::Gamepad_Dpad_Left))
 		{
-			moveX -= speed;
+			moveX -= 1;
 		}
 		if (input->GetKey(tako::Key::Right) || input->GetKey(tako::Key::D) || input->GetKey(tako::Key::Gamepad_Dpad_Right))
 		{
-			moveX += speed;
+			moveX += 1;
 		}
 
+		moveX = tako::mathf::clamp(moveX, -1, 1);
+		moveX *= speed;
 
-		auto grounded = body.velocity.y == 0;
+		auto grounded = player.grounded;
 		player.airTime = grounded ? 0 : player.airTime + dt;
 		if (player.airTime < 0.3f && (input->GetKey(tako::Key::Space) || input->GetKey(tako::Key::Gamepad_A)))
 		{
@@ -34,7 +36,7 @@ inline void PlayerUpdate(FrameData* frameData, tako::Input* input, float dt, tak
 		body.velocity.x = moveX = acceleration * moveX + (1 - acceleration) * body.velocity.x;
 		body.velocity.y -= dt * 200;
 
-		if (input->GetKey(tako::Key::Up) || input->GetKey(tako::Key::W))
+		if (input->GetKey(tako::Key::Up) || input->GetKey(tako::Key::W) || input->GetKey(tako::Key::Gamepad_Dpad_Up))
 		{
 			auto playerRec = body.CalcRec(pos.position);
 			world.IterateComps<Position, PlayerSpawn>([&](Position& sPos, PlayerSpawn& spawn)
