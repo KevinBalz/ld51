@@ -7,6 +7,7 @@
 #include "Comps.hpp"
 #include "Entity.hpp"
 #include <Font.hpp>
+#include "Event.hpp"
 #include "FrameData.hpp"
 #include "Jam/TileMap.hpp"
 #include "Player.hpp"
@@ -186,9 +187,24 @@ public:
 		);
 	}
 
+	int GetMaxClockTime()
+	{
+		ClockMode clockMode;
+		m_world.IterateComps<Player>([&](Player& player)
+		{
+			clockMode = player.clockMode;
+		});
+		switch (clockMode)
+		{
+			case ClockMode::Binary: return 2;
+			case ClockMode::Decimal: return 10;
+			case ClockMode::Hexa: return 16;
+		}
+	}
+
 	void ResetWorldClock()
 	{
-		m_worldClock = 10;
+		m_worldClock = GetMaxClockTime();
 	}
 
 	void UpdateClockText()
@@ -196,16 +212,54 @@ public:
 		int num = std::ceil(m_worldClock);
 
 		char firstDigit;
-		if (num >= 10)
-		{
-			firstDigit = num / 10 + '0';
-		}
-		else
-		{
-			firstDigit = '0';
-		}
+
 		char secondDigit;
-		secondDigit = num % 10 + '0';
+
+		ClockMode clockMode;
+		m_world.IterateComps<Player>([&](Player& player)
+		{
+			clockMode = player.clockMode;
+		});
+		switch (clockMode)
+		{
+			case ClockMode::Binary:
+			{
+				firstDigit = std::min(1, num / 2) + '0';
+				secondDigit = num % 2 + '0';
+			} break;
+			case ClockMode::Decimal:
+			{
+				if (num >= 10)
+				{
+					firstDigit = num / 10 + '0';
+				}
+				else
+				{
+					firstDigit = '0';
+				}
+				secondDigit = num % 10 + '0';
+			} break;
+			case ClockMode::Hexa:
+			{
+				if (num >= 16)
+				{
+					firstDigit = num / 16 + '0';
+				}
+				else
+				{
+					firstDigit = '0';
+				}
+				auto mod = num % 16;
+				if (mod >= 10)
+				{
+					secondDigit = mod - 10 + 'A';
+				}
+				else
+				{
+					secondDigit = mod + '0';
+				}
+			} break;
+		}
 		std::stringstream stream;
 		stream << firstDigit << secondDigit;
 		auto str = stream.str();
@@ -227,6 +281,8 @@ public:
 			" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]\a_`abcdefghijklmnopqrstuvwxyz{|}~");
 		m_clockTex = CreateText(drawer, m_font, m_renderedClockText);
 		m_upgradeSprites[0] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
+		m_upgradeSprites[1] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
+		m_upgradeSprites[2] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
 
 		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
 		LoadLevel(0, 0);
@@ -238,27 +294,47 @@ public:
 	{
 		auto frameData = reinterpret_cast<FrameData*>(stageData.frameData);
 		std::optional<int> newNeighbourID;
-		std::optional<tako::Vector2> newPos;
-		m_world.IterateComps<Player, Position>([&](Player& player, Position& pos)
+#ifndef NDEBUG
+		if (input->GetKeyDown(tako::Key::Enter))
 		{
-			if (pos.position.x < 0 || pos.position.x > m_activeLevel->size.x || pos.position.y < 0 || pos.position.y > m_activeLevel->size.y)
+			m_world.IterateComps<Player, Position>([&](Player& player, Position& pos)
 			{
-				tako::Vector2 worldPos(pos.position.x + m_activeLevel->worldX, m_activeLevel->worldY + m_activeLevel->size.y - pos.position.y);
-				for (auto neighbourID : m_activeLevel->neighbours)
+				m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
+				m_playerWarp = player;
+			});
+			ResetWorldClock();
+		}
+#endif // !NDEBUG
+		if (m_playerWarp)
+		{
+			auto player = m_playerWarp.value();
+			LoadLevel(player.spawnMap, player.spawnID);
+			m_playerWarp = {};
+		}
+		else
+		{
+			std::optional<tako::Vector2> newPos;
+			m_world.IterateComps<Player, Position>([&](Player& player, Position& pos)
+			{
+				if (pos.position.x < 0 || pos.position.x > m_activeLevel->size.x || pos.position.y < 0 || pos.position.y > m_activeLevel->size.y)
 				{
-					auto& neighbour = m_tileWorld.levels[neighbourID];
-					if (worldPos.x >= neighbour.worldX && worldPos.x <= neighbour.worldX + neighbour.size.x && worldPos.y >= neighbour.worldY && worldPos.y <= neighbour.worldY + neighbour.size.y )
+					tako::Vector2 worldPos(pos.position.x + m_activeLevel->worldX, m_activeLevel->worldY + m_activeLevel->size.y - pos.position.y);
+					for (auto neighbourID : m_activeLevel->neighbours)
 					{
-						newPos = tako::Vector2(worldPos.x - neighbour.worldX, neighbour.worldY + neighbour.size.y - worldPos.y);
-						newNeighbourID = neighbourID;
-						break;
+						auto& neighbour = m_tileWorld.levels[neighbourID];
+						if (worldPos.x >= neighbour.worldX && worldPos.x <= neighbour.worldX + neighbour.size.x && worldPos.y >= neighbour.worldY && worldPos.y <= neighbour.worldY + neighbour.size.y )
+						{
+							newPos = tako::Vector2(worldPos.x - neighbour.worldX, neighbour.worldY + neighbour.size.y - worldPos.y);
+							newNeighbourID = neighbourID;
+							break;
+						}
 					}
 				}
+			});
+			if (newPos)
+			{
+				LoadLevel(newNeighbourID.value(), newPos.value());
 			}
-		});
-		if (newPos)
-		{
-			LoadLevel(newNeighbourID.value(), newPos.value());
 		}
 		PlayerUpdate(frameData, input, dt, m_world, m_activeLevelID);
 
@@ -287,15 +363,15 @@ public:
 		{
 			ResetWorldClock();
 		}
+		m_worldClock = std::min(m_worldClock, (float) GetMaxClockTime());
 		if (m_worldClock <= 0)
 		{
 			ResetWorldClock();
-			std::optional<Player> playerWarp;
 			m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
 			{
 				if (m_activeLevelID != player.spawnMap)
 				{
-					playerWarp = player;
+					m_playerWarp = player;
 				}
 				else
 				{
@@ -308,11 +384,7 @@ public:
 					});
 				}
 			});
-			if (playerWarp)
-			{
-				auto player = playerWarp.value();
-				LoadLevel(player.spawnMap, player.spawnID);
-			}
+
 		}
 
 		m_world.IterateComps<Position, Camera>([&](Position& pos, Camera& cam)
@@ -340,6 +412,9 @@ public:
 			ImGui::Begin("Debug");
 			ImGui::InputInt("Spawn Map", &player.spawnMap);
 			ImGui::InputInt("Spawner ID", &player.spawnID);
+			ImGui::InputInt("ClockMode", reinterpret_cast<int*>(&player.clockMode));
+
+			ImGui::Checkbox("Dash", &player.unlocked[0]);
 			ImGui::End();
 		});
 
@@ -405,4 +480,5 @@ private:
 	std::string m_renderedClockText = "10";
 	tako::Texture m_clockTex;
 	std::array<tako::Texture, 4> m_upgradeSprites;
+	std::optional<Player> m_playerWarp;
 };

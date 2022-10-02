@@ -32,6 +32,13 @@ struct RigidBody
 	}
 };
 
+enum class ClockMode
+{
+	Decimal = 0,
+	Hexa = 1,
+	Binary = 2
+};
+
 struct Player
 {
 	int spawnID = 0;
@@ -41,7 +48,8 @@ struct Player
 	bool grounded = false;
 	float dashCooldown = 0.0f;
 	float usedDashes = 0;
-	std::array<bool, 4> unlocked;
+	ClockMode clockMode = ClockMode::Decimal;
+	std::array<bool, 4> unlocked{false};
 };
 
 struct Camera

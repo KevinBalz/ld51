@@ -46,6 +46,7 @@ inline void PlayerUpdate(FrameData* frameData, tako::Input* input, float dt, tak
 			player.usedDashes++;
 		}
 		body.velocity.y -= dt * 200;
+		body.velocity.y = std::max(body.velocity.y, -400.0f);
 
 		static float prevAxisY = 0;
 		auto axisY = input->GetAxis(tako::Axis::Left).y;
@@ -81,6 +82,11 @@ inline void PlayerUpdate(FrameData* frameData, tako::Input* input, float dt, tak
 			{
 				player.unlocked[up.upgradeID] = true;
 				toDelete.Push(entity);
+				if (up.upgradeID > 0)
+				{
+				LOG("clockupdae")
+					player.clockMode = static_cast<ClockMode>(up.upgradeID);
+				}
 			}
 		});
 		for (int i = 0; i < toDelete.GetLength(); i++)
