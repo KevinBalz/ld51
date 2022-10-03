@@ -10,9 +10,11 @@
 #include "Event.hpp"
 #include "FrameData.hpp"
 #include "Jam/TileMap.hpp"
+#include "OpenGLSprite.hpp"
 #include "Player.hpp"
 #include "Reflection.hpp"
 #include "SmallVec.hpp"
+#include "Sprite.hpp"
 #include <variant>
 #include <sstream>
 #ifdef TAKO_IMGUI
@@ -125,7 +127,7 @@ public:
 		{
 			world.AddComponent<SpriteRenderer>(ent);
 			auto& ren = world.GetComponent<SpriteRenderer>(ent);
-			ren.sprite = m_upgradeSprites[0];
+			ren.sprite = m_collectibleSprite;
 		});
 	}
 
@@ -133,6 +135,7 @@ public:
 	{
 		Player player;
 		RigidBody body{{0, 0}, {0, 0, 12, 16}};
+		Animator animator{&m_playerAnimation};
 		m_world.IterateComps<Player, RigidBody>([&](Player& pl, RigidBody& rb)
 		{
 			player = pl;
@@ -189,7 +192,8 @@ public:
 			std::move(player),
 			Position{spawnPos},
 			std::move(body),
-			RectRenderer{{16, 16}, {255, 0, 0, 255}},
+			SpriteRenderer{m_playerAnimation.sprites[0], {0, 1}},
+			std::move(animator),
 			Camera()
 		);
 	}
@@ -314,6 +318,12 @@ public:
 		m_upgradeSprites[1] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
 		m_upgradeSprites[2] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
 
+
+		m_collectibleSprite = drawer->CreateTexture(tako::Bitmap::FromFile("/Collectible.png"));
+		auto playerTex = drawer->CreateTexture(tako::Bitmap::FromFile("/Player.png"));
+		m_playerAnimation.sprites.push_back(reinterpret_cast<tako::OpenGLSprite*>(drawer->CreateSprite(playerTex, 0, 0, 12, 18)));
+		m_playerAnimation.reverse.push_back(reinterpret_cast<tako::OpenGLSprite*>(drawer->CreateSprite(playerTex, 12, 0, -12, 18)));
+
 		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
 		LoadLevel(0, 0);
 		ResetWorldClock();
@@ -342,6 +352,7 @@ public:
 		{
 			return;
 		}
+		tako::SmallVec<tako::Entity, 4> toDelete;
 		std::optional<int> newNeighbourID;
 #ifndef NDEBUG
 		if (input->GetKeyDown(tako::Key::Enter))
@@ -436,6 +447,22 @@ public:
 
 		}
 
+		m_world.IterateComps<SpriteRenderer, Animator>([&](SpriteRenderer& spr, Animator& animator)
+		{
+			spr.sprite = animator.flipX ? animator.data->reverse[0] : animator.data->sprites[0];
+		});
+
+		m_world.IterateComps<tako::Entity, SpriteRenderer, FadeOut>([&](tako::Entity ent, SpriteRenderer& spr, FadeOut& fade)
+		{
+			fade.left -= dt;
+			if (fade.left <= 0)
+			{
+				toDelete.Push(ent);
+				return;
+			}
+			spr.alpha = fade.left / fade.duration * fade.startFade;
+		});
+
 		m_world.IterateComps<Position, Camera>([&](Position& pos, Camera& cam)
 		{
 			auto camSize = drawer->GetCameraViewSize();
@@ -454,6 +481,10 @@ public:
 			drawer->SetCameraPosition(cam.position);
 		});
 		UpdateClockText();
+		for (int i = 0; i < toDelete.GetLength(); i++)
+		{
+			m_world.Delete(toDelete[i]);
+		}
 	}
 
 	void DrawEntities()
@@ -464,7 +495,32 @@ public:
 		});
 		m_world.IterateComps<Position, SpriteRenderer>([&](Position& pos, SpriteRenderer& ren)
 		{
-			drawer->DrawImage(pos.position.x - (float) ren.sprite.width / 2, pos.position.y + (float) ren.sprite.height / 2, ren.sprite.width, ren.sprite.height, ren.sprite.handle);
+			float width;
+			float height;
+			if (std::holds_alternative<tako::Texture>(ren.sprite))
+			{
+				auto tex = std::get<tako::Texture>(ren.sprite);
+				width = tex.width;
+				height = tex.height;
+			}
+			else
+			{
+				auto tex = std::get<tako::OpenGLSprite*>(ren.sprite);
+				width = tex->width;
+				height = tex->height;
+			}
+			float x = pos.position.x + ren.offset.x - width / 2;
+			float y = pos.position.y + ren.offset.y + height / 2;
+			if (std::holds_alternative<tako::Texture>(ren.sprite))
+			{
+				auto tex = std::get<tako::Texture>(ren.sprite);
+				drawer->DrawImage(x, y, width, height, tex.handle);
+			}
+			else
+			{
+				auto sprite = std::get<tako::OpenGLSprite*>(ren.sprite);
+				drawer->DrawSprite(x, y, width, height, sprite, {255, 255, 255, ren.alpha});
+			}
 		});
 	}
 
@@ -528,6 +584,8 @@ private:
 	std::string m_renderedClockText = "10";
 	tako::Texture m_clockTex;
 	tako::Texture m_dialogTex;
+	tako::Texture m_collectibleSprite;
+	AnimationData m_playerAnimation;
 	std::array<tako::Texture, 4> m_upgradeSprites;
 	std::optional<Player> m_playerWarp;
 	SharedData sharedData;

@@ -2,8 +2,12 @@
 #include <Reflection.hpp>
 #include <Math.hpp>
 #include <World.hpp>
+#include <variant>
 #include "PlatformerPhysics2D.hpp"
 #include "Texture.hpp"
+#include "OpenGLSprite.hpp"
+
+using Rect = tako::Jam::PlatformerPhysics2D::Rect;
 
 struct Position
 {
@@ -18,15 +22,17 @@ struct RectRenderer
 
 struct SpriteRenderer
 {
-	tako::Texture sprite;
+	std::variant<tako::Texture, tako::OpenGLSprite*> sprite;
+	tako::Vector2 offset = {0, 0};
+	tako::U8 alpha = 255;
 };
 
 struct RigidBody
 {
 	tako::Vector2 velocity;
-	tako::Jam::PlatformerPhysics2D::Rect bounds;
+	Rect bounds;
 
-	tako::Jam::PlatformerPhysics2D::Rect CalcRec(tako::Vector2 position)
+	Rect CalcRec(tako::Vector2 position)
 	{
 		return {position.x + bounds.x, position.y + bounds.y, bounds.w, bounds.h};
 	}
@@ -50,7 +56,7 @@ struct Player
 	float usedDashes = 0;
 	ClockMode clockMode = ClockMode::Decimal;
 	std::array<bool, 3> unlocked{false};
-	std::array<bool, 7> collected{false};
+	std::array<bool, 8> collected{false};
 };
 
 struct Camera
@@ -77,4 +83,21 @@ struct Collectible
 	REFLECT()
 };
 
+struct AnimationData
+{
+	std::vector<tako::OpenGLSprite*> sprites;
+	std::vector<tako::OpenGLSprite*> reverse;
+};
 
+struct Animator
+{
+	AnimationData* data;
+	bool flipX = false;
+};
+
+struct FadeOut
+{
+	tako::U8 startFade;
+	float duration;
+	float left = duration;
+};

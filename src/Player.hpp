@@ -10,7 +10,7 @@
 
 inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Input* input, float dt, tako::World& world, int tileMap)
 {
-	world.IterateComps<Player, Position, RigidBody>([&](Player& player, Position& pos, RigidBody& body)
+	world.IterateComps<Player, Position, RigidBody, Animator, SpriteRenderer>([&](Player& player, Position& pos, RigidBody& body, Animator& animator, SpriteRenderer& renderer)
 	{
 		constexpr float speed = 50;
 		constexpr auto acceleration = 0.2f;
@@ -35,6 +35,7 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 		}
 
 		body.velocity.x = moveX = acceleration * moveX + (1 - acceleration) * body.velocity.x;
+		animator.flipX = body.velocity.x == 0 ? animator.flipX : body.velocity.x < 0;
 
 		player.usedDashes = grounded ? 0 : player.usedDashes;
 		player.dashCooldown -= dt;
@@ -44,6 +45,19 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 			body.velocity.y = 0;
 			player.dashCooldown = 1;
 			player.usedDashes++;
+		}
+
+		if (std::abs(body.velocity.x) > speed * 2)
+		{
+			auto dashRen = renderer;
+			dashRen.alpha = 128;
+			Position dashPos = pos;
+			world.Create
+			(
+				std::move(dashPos),
+				std::move(dashRen),
+				FadeOut{100, 0.5f}
+			);
 		}
 		body.velocity.y -= dt * 200;
 		body.velocity.y = std::max(body.velocity.y, -400.0f);
