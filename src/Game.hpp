@@ -135,7 +135,7 @@ public:
 	{
 		Player player;
 		RigidBody body{{0, 0}, {0, 0, 12, 16}};
-		Animator animator{&m_playerAnimation};
+		Animator animator{&m_playerAnimation, PlayerIdleClip};
 		m_world.IterateComps<Player, RigidBody>([&](Player& pl, RigidBody& rb)
 		{
 			player = pl;
@@ -315,14 +315,13 @@ public:
 		m_clockTex = CreateText(drawer, m_font, m_renderedClockText);
 		m_dialogTex = CreateText(drawer, m_font, " ");
 		m_upgradeSprites[0] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
-		m_upgradeSprites[1] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
-		m_upgradeSprites[2] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
+		m_upgradeSprites[1] = drawer->CreateTexture(tako::Bitmap::FromFile("/HexClock.png"));
+		m_upgradeSprites[2] = drawer->CreateTexture(tako::Bitmap::FromFile("/HexClock.png"));
 
 
 		m_collectibleSprite = drawer->CreateTexture(tako::Bitmap::FromFile("/Collectible.png"));
 		auto playerTex = drawer->CreateTexture(tako::Bitmap::FromFile("/Player.png"));
-		m_playerAnimation.sprites.push_back(reinterpret_cast<tako::OpenGLSprite*>(drawer->CreateSprite(playerTex, 0, 0, 12, 18)));
-		m_playerAnimation.reverse.push_back(reinterpret_cast<tako::OpenGLSprite*>(drawer->CreateSprite(playerTex, 12, 0, -12, 18)));
+		m_playerAnimation.InitSprites(drawer, playerTex, 12, 18);
 
 		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
 		LoadLevel(0, 0);
@@ -449,7 +448,15 @@ public:
 
 		m_world.IterateComps<SpriteRenderer, Animator>([&](SpriteRenderer& spr, Animator& animator)
 		{
-			spr.sprite = animator.flipX ? animator.data->reverse[0] : animator.data->sprites[0];
+			animator.passed += dt;
+			auto frameCount = animator.clip.end - animator.clip.start + 1;
+			auto totalDuration = animator.clip.duration * frameCount;
+			if (animator.passed > totalDuration)
+			{
+				animator.passed -= totalDuration;
+			}
+			size_t frame = animator.clip.start + std::floor(animator.passed / animator.clip.duration);
+			spr.sprite = animator.flipX ? animator.data->reverse[frame] : animator.data->sprites[frame];
 		});
 
 		m_world.IterateComps<tako::Entity, SpriteRenderer, FadeOut>([&](tako::Entity ent, SpriteRenderer& spr, FadeOut& fade)
@@ -586,7 +593,7 @@ private:
 	tako::Texture m_dialogTex;
 	tako::Texture m_collectibleSprite;
 	AnimationData m_playerAnimation;
-	std::array<tako::Texture, 4> m_upgradeSprites;
+	std::array<tako::Texture, 3> m_upgradeSprites;
 	std::optional<Player> m_playerWarp;
 	SharedData sharedData;
 };

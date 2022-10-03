@@ -3,6 +3,7 @@
 #include <Math.hpp>
 #include <World.hpp>
 #include <variant>
+#include "OpenGLPixelArtDrawer.hpp"
 #include "PlatformerPhysics2D.hpp"
 #include "Texture.hpp"
 #include "OpenGLSprite.hpp"
@@ -56,7 +57,7 @@ struct Player
 	float usedDashes = 0;
 	ClockMode clockMode = ClockMode::Decimal;
 	std::array<bool, 3> unlocked{false};
-	std::array<bool, 8> collected{false};
+	std::array<bool, 9> collected{false};
 };
 
 struct Camera
@@ -83,16 +84,45 @@ struct Collectible
 	REFLECT()
 };
 
+struct ClipData
+{
+	size_t start;
+	size_t end;
+	float duration;
+};
+
 struct AnimationData
 {
 	std::vector<tako::OpenGLSprite*> sprites;
 	std::vector<tako::OpenGLSprite*> reverse;
+
+	void InitSprites(tako::OpenGLPixelArtDrawer* drawer, tako::Texture tex, int w, int h)
+	{
+		auto count = tex.width / w;
+		for (int i = 0; i < count; i++)
+		{
+			sprites.push_back(reinterpret_cast<tako::OpenGLSprite*>(drawer->CreateSprite(tex, i*w, 0, w, h)));
+			reverse.push_back(reinterpret_cast<tako::OpenGLSprite*>(drawer->CreateSprite(tex, i*w+w, 0, -w, h)));
+		}
+	}
 };
 
 struct Animator
 {
 	AnimationData* data;
+	ClipData clip;
 	bool flipX = false;
+	float passed = 0;
+
+	void PlayClip(ClipData newClip)
+	{
+		if (clip.start == newClip.start && clip.end == newClip.end)
+		{
+			return;
+		}
+		passed = 0;
+		clip = newClip;
+	}
 };
 
 struct FadeOut

@@ -7,6 +7,7 @@
 #include "Jam/TileMap.hpp"
 #include "SmallVec.hpp"
 
+constexpr const ClipData PlayerIdleClip{0, 1, 0.4f};
 
 inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Input* input, float dt, tako::World& world, int tileMap)
 {
@@ -47,7 +48,8 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 			player.usedDashes++;
 		}
 
-		if (std::abs(body.velocity.x) > speed * 2)
+		auto absVel = std::abs(body.velocity.x);
+		if (absVel > speed * 2)
 		{
 			auto dashRen = renderer;
 			dashRen.alpha = 128;
@@ -58,6 +60,19 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 				std::move(dashRen),
 				FadeOut{100, 0.5f}
 			);
+			animator.PlayClip({6, 6, 1337});
+		}
+		else if (!grounded)
+		{
+			animator.PlayClip({7, 8, 0.15f});
+		}
+		else if (absVel > 1)
+		{
+			animator.PlayClip({2, 5, 0.15f});
+		}
+		else
+		{
+			animator.PlayClip(PlayerIdleClip);
 		}
 		body.velocity.y -= dt * 200;
 		body.velocity.y = std::max(body.velocity.y, -400.0f);
