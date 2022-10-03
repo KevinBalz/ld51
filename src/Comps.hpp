@@ -57,7 +57,7 @@ struct Player
 	float usedDashes = 0;
 	ClockMode clockMode = ClockMode::Decimal;
 	std::array<bool, 3> unlocked{false};
-	std::array<bool, 9> collected{false};
+	std::array<bool, 10> collected{false};
 };
 
 struct Camera
