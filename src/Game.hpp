@@ -347,7 +347,7 @@ public:
 			animator.passed += dt;
 			auto frameCount = animator.clip.end - animator.clip.start + 1;
 			auto totalDuration = animator.clip.duration * frameCount;
-			if (animator.passed > totalDuration)
+			if (animator.passed >= totalDuration)
 			{
 				animator.passed -= totalDuration;
 			}
