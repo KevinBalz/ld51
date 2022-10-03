@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include "Audio.hpp"
 
 struct FrameData
 {
@@ -11,6 +12,7 @@ struct FrameData
 
 struct SharedData
 {
+	tako::Audio* audio;
 	std::string targetText = "";
 	int textDisplayed = 0;
 	float textPassed = 0;

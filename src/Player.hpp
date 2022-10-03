@@ -6,6 +6,7 @@
 #include "FrameData.hpp"
 #include "Jam/TileMap.hpp"
 #include "SmallVec.hpp"
+#include "Audio.hpp"
 
 constexpr const ClipData PlayerIdleClip{0, 1, 0.4f};
 
@@ -33,6 +34,10 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 		if (player.airTime < 0.3f && (input->GetKey(tako::Key::Space) || input->GetKey(tako::Key::Gamepad_A)))
 		{
 			body.velocity.y = 80;
+			if (grounded)
+			{
+				sharedData->audio->Play("/Jump.wav");
+			}
 		}
 
 		body.velocity.x = moveX = acceleration * moveX + (1 - acceleration) * body.velocity.x;
@@ -46,6 +51,7 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 			body.velocity.y = 0;
 			player.dashCooldown = 1;
 			player.usedDashes++;
+			sharedData->audio->Play("/Dash.wav");
 		}
 
 		auto absVel = std::abs(body.velocity.x);
@@ -94,6 +100,7 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 					player.spawnID = spawn.id;
 					player.spawnMap = tileMap;
 					frameData->triggeredCheckpoint = true;
+					sharedData->audio->Play("/Activate.wav");
 				}
 			});
 		}
@@ -144,6 +151,7 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 
 				}
 				sharedData->ShowText(str, true);
+				sharedData->audio->Play("/Upgrade.wav");
 			}
 		});
 
@@ -161,6 +169,7 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 				frameData->collectedCount++;
 				toDelete.Push(entity);
 				sharedData->ShowText(fmt::format("Found {} of {}", frameData->collectedCount, player.collected.size()));
+				sharedData->audio->Play("/Collect.wav");
 			}
 		});
 		for (int i = 0; i < toDelete.GetLength(); i++)

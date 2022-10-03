@@ -288,7 +288,7 @@ public:
 		if (sharedData.targetText.size() <= 0) return;
 		sharedData.textPassed += dt;
 		bool fadeOut = sharedData.textDisplayed == sharedData.targetText.size();
-		if (fadeOut && sharedData.textPassed >= (sharedData.textTutorial ? 5 : 1))
+		if (fadeOut && sharedData.textPassed >= (sharedData.textTutorial ? 3 : 1))
 		{
 			sharedData.targetText = "";
 			return;
@@ -309,6 +309,10 @@ public:
 		context = setup.context;
 		drawer->SetTargetSize(240, 135);
 		drawer->AutoScale();
+		sharedData.audio = setup.audio;
+		sharedData.audio->Init();
+		m_music = sharedData.audio->Load("/Music.wav");
+		sharedData.audio->Play(m_music, true);
 
 		m_font = new tako::Font("/charmap-cellphone.png", 5, 7, 1, 1, 2, 2,
 			" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]\a_`abcdefghijklmnopqrstuvwxyz{|}~");
@@ -322,6 +326,7 @@ public:
 		m_collectibleSprite = drawer->CreateTexture(tako::Bitmap::FromFile("/Collectible.png"));
 		auto playerTex = drawer->CreateTexture(tako::Bitmap::FromFile("/Player.png"));
 		m_playerAnimation.InitSprites(drawer, playerTex, 12, 18);
+
 
 		m_tileWorld = tako::Jam::LDtkImporter::LoadWorld("/World.ldtk");
 		LoadLevel(0, 0);
@@ -426,6 +431,7 @@ public:
 		if (m_worldClock <= 0)
 		{
 			ResetWorldClock();
+			sharedData.audio->Play("/Reset.wav");
 			m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
 			{
 				if (m_activeLevelID != player.spawnMap)
@@ -595,5 +601,6 @@ private:
 	AnimationData m_playerAnimation;
 	std::array<tako::Texture, 3> m_upgradeSprites;
 	std::optional<Player> m_playerWarp;
+	tako::AudioClip* m_music;
 	SharedData sharedData;
 };
