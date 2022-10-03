@@ -55,6 +55,7 @@ struct Player
 	bool grounded = false;
 	float dashCooldown = 0.0f;
 	float usedDashes = 0;
+	float stepCounter = 0;
 	ClockMode clockMode = ClockMode::Decimal;
 	std::array<bool, 3> unlocked{false};
 	std::array<bool, 10> collected{false};

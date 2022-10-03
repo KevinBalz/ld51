@@ -79,6 +79,12 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 		else if (absVel > 1)
 		{
 			animator.PlayClip({2, 5, 0.15f});
+			player.stepCounter += dt;
+			if (player.stepCounter > 0.3f)
+			{
+				sharedData->audio->Play("/Step.wav");
+				player.stepCounter = 0;
+			}
 		}
 		else
 		{
@@ -113,6 +119,13 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 		{
 			player.clockMode = player.clockMode != ClockMode::Binary ? ClockMode::Binary : player.unlocked[1] ? ClockMode::Hexa : ClockMode::Decimal;
 		}
+
+		static auto prevGrounded = grounded;
+		if (!prevGrounded && grounded)
+		{
+			sharedData->audio->Play("/Land.wav");
+		}
+		prevGrounded = grounded;
 
 		frameData->collectedCount = 0;
 		for (int i = 0; i < player.collected.size(); i++)
