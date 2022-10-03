@@ -17,6 +17,10 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 		constexpr float speed = 50;
 		constexpr auto acceleration = 0.2f;
 		float moveX = input->GetAxis(tako::Axis::Left).x;
+		if (std::abs(moveX) < 0.1f)
+		{
+			moveX = 0;
+		}
 		if (input->GetKey(tako::Key::Left) || input->GetKey(tako::Key::A) || input->GetKey(tako::Key::Gamepad_Dpad_Left))
 		{
 			moveX -= 1;
@@ -45,7 +49,7 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 
 		player.usedDashes = grounded ? 0 : player.usedDashes;
 		player.dashCooldown -= dt;
-		if (player.unlocked[0] && player.dashCooldown <= 0 && player.usedDashes < 1 && input->GetKeyDown(tako::Key::C))
+		if (player.unlocked[0] && player.dashCooldown <= 0 && player.usedDashes < 1 && (input->GetKeyDown(tako::Key::C) || input->GetKeyDown(tako::Key::Gamepad_X) || input->GetKeyDown(tako::Key::Gamepad_R2) || input ->GetKeyDown(tako::Key::Gamepad_R)))
 		{
 			body.velocity.x = tako::mathf::sign(moveX) * 750;
 			body.velocity.y = 0;
@@ -89,7 +93,7 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 		prevAxisY = axisY;
 
 		auto playerRec = body.CalcRec(pos.position);
-		if (axisUpDown || input->GetKeyDown(tako::Key::Up) || input->GetKeyDown(tako::Key::W) || input->GetKeyDown(tako::Key::Gamepad_Dpad_Up) || input->GetKeyDown(tako::Key::Gamepad_B))
+		if (axisUpDown || input->GetKeyDown(tako::Key::Up) || input->GetKeyDown(tako::Key::W) || input->GetKeyDown(tako::Key::X) || input->GetKeyDown(tako::Key::Gamepad_Dpad_Up) || input->GetKeyDown(tako::Key::Gamepad_B))
 		{
 			world.IterateComps<Position, PlayerSpawn>([&](Position& sPos, PlayerSpawn& spawn)
 			{
@@ -168,8 +172,16 @@ inline void PlayerUpdate(SharedData* sharedData, FrameData* frameData, tako::Inp
 				player.collected[col.id] = true;
 				frameData->collectedCount++;
 				toDelete.Push(entity);
-				sharedData->ShowText(fmt::format("Found {} of {}", frameData->collectedCount, player.collected.size()));
-				sharedData->audio->Play("/Collect.wav");
+				if (frameData->collectedCount < player.collected.size())
+				{
+					sharedData->ShowText(fmt::format("Found {} of {}", frameData->collectedCount, player.collected.size()));
+					sharedData->audio->Play("/Collect.wav");
+				}
+				else
+				{
+					sharedData->ShowText(fmt::format("Congratulations!\n You found all\n{} orbs!\nThank you for\nplaying my game!", player.collected.size()), true);
+					sharedData->audio->Play("/Collect.wav");
+				}
 			}
 		});
 		for (int i = 0; i < toDelete.GetLength(); i++)

@@ -2,6 +2,13 @@
 #include <string>
 #include "Audio.hpp"
 
+enum class GameState
+{
+	AudioInit,
+	Title,
+	Game
+};
+
 struct FrameData
 {
 	bool triggeredCheckpoint = false;

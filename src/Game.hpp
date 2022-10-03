@@ -299,8 +299,16 @@ public:
 		sharedData.textDisplayed++;
 		sharedData.textPassed = 0;
 		auto str = sharedData.targetText.substr(0, sharedData.textDisplayed);
-		LOG("{}", str);
 		UpdateText(drawer, m_font, str, m_dialogTex);
+	}
+
+	void InitAudio()
+	{
+		sharedData.audio->Init();
+		m_music = sharedData.audio->Load("/Music.wav");
+		sharedData.audio->Play(m_music, true);
+		m_gameState = GameState::Title;
+		UpdateText(drawer, m_font, "Base Clock", m_titleTex);
 	}
 
 	void Setup(const tako::SetupData& setup)
@@ -310,14 +318,13 @@ public:
 		drawer->SetTargetSize(240, 135);
 		drawer->AutoScale();
 		sharedData.audio = setup.audio;
-		sharedData.audio->Init();
-		m_music = sharedData.audio->Load("/Music.wav");
-		sharedData.audio->Play(m_music, true);
 
 		m_font = new tako::Font("/charmap-cellphone.png", 5, 7, 1, 1, 2, 2,
 			" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]\a_`abcdefghijklmnopqrstuvwxyz{|}~");
 		m_clockTex = CreateText(drawer, m_font, m_renderedClockText);
 		m_dialogTex = CreateText(drawer, m_font, " ");
+		m_titleTex = CreateText(drawer, m_font, "Press any button");
+		m_promptTex = CreateText(drawer, m_font, "   Press [UP] to  \nactivate the clock");
 		m_upgradeSprites[0] = drawer->CreateTexture(tako::Bitmap::FromFile("/DashUpgrade.png"));
 		m_upgradeSprites[1] = drawer->CreateTexture(tako::Bitmap::FromFile("/HexClock.png"));
 		m_upgradeSprites[2] = drawer->CreateTexture(tako::Bitmap::FromFile("/HexClock.png"));
@@ -333,9 +340,75 @@ public:
 		ResetWorldClock();
 	}
 
+	void GraphicsUpdate(float dt)
+	{
+		m_world.IterateComps<SpriteRenderer, Animator>([&](SpriteRenderer& spr, Animator& animator)
+		{
+			animator.passed += dt;
+			auto frameCount = animator.clip.end - animator.clip.start + 1;
+			auto totalDuration = animator.clip.duration * frameCount;
+			if (animator.passed > totalDuration)
+			{
+				animator.passed -= totalDuration;
+			}
+			size_t frame = animator.clip.start + std::floor(animator.passed / animator.clip.duration);
+			spr.sprite = animator.flipX ? animator.data->reverse[frame] : animator.data->sprites[frame];
+		});
+
+		m_world.IterateComps<Position, Camera>([&](Position& pos, Camera& cam)
+		{
+			auto camSize = drawer->GetCameraViewSize();
+			Rect bounds(m_activeLevel->size.x/2, m_activeLevel->size.y/2, m_activeLevel->size.x, m_activeLevel->size.y);
+			auto target = FitMapBound(bounds, pos.position, camSize);
+			if (cam.snapped)
+			{
+				cam.position += (target - cam.position) * dt * 6;
+				cam.position = FitMapBound(bounds, cam.position, camSize);
+			}
+			else
+			{
+				cam.position = target;
+				cam.snapped = true;
+			}
+			drawer->SetCameraPosition(cam.position);
+		});
+	}
+
 
 	void Update(const tako::GameStageData stageData, tako::Input* input, float dt)
 	{
+		if (m_gameState == GameState::AudioInit)
+		{
+			if (input->GetAnyDown())
+			{
+				InitAudio();
+				m_world.IterateComps<Player>([&](Player& player)
+				{
+					player.grounded = true;
+				});
+			}
+			else
+			{
+				return;
+			}
+		}
+		if (m_gameState == GameState::Title)
+		{
+			static float prevAxisY = 0;
+			auto axisY = input->GetAxis(tako::Axis::Left).y;
+			auto axisUpDown = axisY > 0.9f && prevAxisY < 0.9f;
+			prevAxisY = axisY;
+
+			if (axisUpDown || input->GetKeyDown(tako::Key::Up) || input->GetKeyDown(tako::Key::W) || input->GetKeyDown(tako::Key::X) || input->GetKeyDown(tako::Key::Gamepad_Dpad_Up) || input->GetKeyDown(tako::Key::Gamepad_B))
+			{
+				m_gameState = GameState::Game;
+			}
+			else
+			{
+				GraphicsUpdate(dt);
+				return;
+			}
+		}
 		auto frameData = reinterpret_cast<FrameData*>(stageData.frameData);
 #ifdef TAKO_IMGUI
 		m_world.IterateComps<Position, Player>([&](Position& pPos, Player& player)
@@ -356,6 +429,7 @@ public:
 		{
 			return;
 		}
+
 		tako::SmallVec<tako::Entity, 4> toDelete;
 		std::optional<int> newNeighbourID;
 #ifndef NDEBUG
@@ -445,25 +519,13 @@ public:
 						if (player.spawnID == spawn.id)
 						{
 							pPos.position = pos.position;
+							player.grounded = true;
 						}
 					});
 				}
 			});
 
 		}
-
-		m_world.IterateComps<SpriteRenderer, Animator>([&](SpriteRenderer& spr, Animator& animator)
-		{
-			animator.passed += dt;
-			auto frameCount = animator.clip.end - animator.clip.start + 1;
-			auto totalDuration = animator.clip.duration * frameCount;
-			if (animator.passed > totalDuration)
-			{
-				animator.passed -= totalDuration;
-			}
-			size_t frame = animator.clip.start + std::floor(animator.passed / animator.clip.duration);
-			spr.sprite = animator.flipX ? animator.data->reverse[frame] : animator.data->sprites[frame];
-		});
 
 		m_world.IterateComps<tako::Entity, SpriteRenderer, FadeOut>([&](tako::Entity ent, SpriteRenderer& spr, FadeOut& fade)
 		{
@@ -476,28 +538,12 @@ public:
 			spr.alpha = fade.left / fade.duration * fade.startFade;
 		});
 
-		m_world.IterateComps<Position, Camera>([&](Position& pos, Camera& cam)
-		{
-			auto camSize = drawer->GetCameraViewSize();
-			Rect bounds(m_activeLevel->size.x/2, m_activeLevel->size.y/2, m_activeLevel->size.x, m_activeLevel->size.y);
-			auto target = FitMapBound(bounds, pos.position, camSize);
-			if (cam.snapped)
-			{
-				cam.position += (target - cam.position) * dt * 6;
-				cam.position = FitMapBound(bounds, cam.position, camSize);
-			}
-			else
-			{
-				cam.position = target;
-				cam.snapped = true;
-			}
-			drawer->SetCameraPosition(cam.position);
-		});
 		UpdateClockText();
 		for (int i = 0; i < toDelete.GetLength(); i++)
 		{
 			m_world.Delete(toDelete[i]);
 		}
+		GraphicsUpdate(dt);
 	}
 
 	void DrawEntities()
@@ -545,12 +591,20 @@ public:
 
 	void Draw(const tako::GameStageData stageData)
 	{
+		drawer->Resize(context->GetWidth(), context->GetHeight());
+		if (m_gameState == GameState::AudioInit)
+		{
+			drawer->SetClearColor({0, 0, 0, 255});
+			drawer->Clear();
+			drawer->SetCameraPosition({0 , 0});
+			drawer->DrawImage((float) -m_titleTex.width / 2, (float) m_titleTex.height / 2, m_titleTex.width, m_titleTex.height, m_titleTex.handle);
+			return;
+		}
 		auto frameData = reinterpret_cast<FrameData*>(stageData.frameData);
 		m_world.IterateComps<Camera>([&](Camera& cam)
 		{
 			drawer->SetCameraPosition(cam.position);
 		});
-		drawer->Resize(context->GetWidth(), context->GetHeight());
 		drawer->SetClearColor(m_activeLevel->backgroundColor);
 		drawer->Clear();
 
@@ -568,17 +622,26 @@ public:
 		}
 
 		drawer->SetCameraPosition({0 , 0});
-		drawer->DrawImage((float) -m_clockTex.width / 2, 42, m_clockTex.width, m_clockTex.height, m_clockTex.handle);
-		if (frameData->showDialog)
+		if (m_gameState == GameState::Title)
 		{
-			float x = (float) -m_dialogTex.width / 2;
-			float y = 0;
-			float width = m_dialogTex.width;
-			float height = m_dialogTex.height;
-			constexpr const float padding = 4;
-			drawer->DrawRectangle(x - padding / 2, y + padding / 2, width + padding, height + padding, {0, 0, 0, 255});
-			drawer->DrawImage(x, y, width, height, m_dialogTex.handle);
+			drawer->DrawImage((float) -m_titleTex.width, 42, m_titleTex.width * 2, m_titleTex.height * 2, m_titleTex.handle);
+			drawer->DrawImage((float) -m_promptTex.width / 2, (float) m_promptTex.height / 2, m_promptTex.width, m_promptTex.height, m_promptTex.handle);
 		}
+		else
+		{
+			drawer->DrawImage((float) -m_clockTex.width / 2, 42, m_clockTex.width, m_clockTex.height, m_clockTex.handle);
+			if (frameData->showDialog)
+			{
+				float x = (float) -m_dialogTex.width / 2;
+				float y = 0;
+				float width = m_dialogTex.width;
+				float height = m_dialogTex.height;
+				constexpr const float padding = 4;
+				drawer->DrawRectangle(x - padding / 2, y + padding / 2, width + padding, height + padding, {0, 0, 0, 255});
+				drawer->DrawImage(x, y, width, height, m_dialogTex.handle);
+			}
+		}
+
 	}
 
 private:
@@ -596,6 +659,8 @@ private:
 	tako::Font* m_font;
 	std::string m_renderedClockText = "10";
 	tako::Texture m_clockTex;
+	tako::Texture m_titleTex;
+	tako::Texture m_promptTex;
 	tako::Texture m_dialogTex;
 	tako::Texture m_collectibleSprite;
 	AnimationData m_playerAnimation;
@@ -603,4 +668,5 @@ private:
 	std::optional<Player> m_playerWarp;
 	tako::AudioClip* m_music;
 	SharedData sharedData;
+	GameState m_gameState = GameState::AudioInit;
 };
